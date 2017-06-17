@@ -145,9 +145,9 @@ def main():
         if row['snapshot_id'] in snapshots:
             image_name = row['camera_label'] + '_' + str(row['tiled_image_id']) + '_' + str(row['frame'])
             if row['snapshot_id'] in images:
-                images[row['snapshot_id']].append(image_name)
+                images[row['snapshot_id']].append( ( image_name, row['height'], row['width'], row['rotate_flip_type']))
             else:
-                images[row['snapshot_id']] = [image_name]
+                images[row['snapshot_id']] = [ ( image_name, row['height'], row['width'], row['rotate_flip_type'])]
             raw_images[image_name] = row['raw_image_oid']
 
     # Create SnapshotInfo.csv file
@@ -176,7 +176,7 @@ def main():
 
         # If the snapshot also contains images, add them to the output
         if snapshot_id in images:
-            values.append(';'.join(map(str, images[snapshot_id])))
+            values.append(';'.join(map(str, [iname[0] for iname in images[snapshot_id]])))
             total_images += len(images[snapshot_id])
             # Create the local directory
             snapshot_dir = os.path.join(args.outdir, "snapshot" + str(snapshot_id))
