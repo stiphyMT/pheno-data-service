@@ -220,7 +220,7 @@ def main():
                                 raw_img = raw.reshape((db['vis_height'], db['vis_width']))
                                 img = cv2.cvtColor(raw_img, cv2.COLOR_BAYER_RG2BGR)
                                 cv2.imwrite(os.path.join(snapshot_dir, image + ".png"), img)
-                                os.remove(local_file)
+                                #os.remove(local_file)
                             else:
                                 print("Warning: File {0} containing image {1} seems corrupted.".format(local_file,
                                                                                                        image))
@@ -232,21 +232,40 @@ def main():
                                 raw_rescale = np.multiply(raw, 16)
                                 raw_img = raw_rescale.reshape((db['nir_height'], db['nir_width']))
                                 cv2.imwrite(os.path.join(snapshot_dir, image + ".png"), raw_img)
-                                os.remove(local_file)
+                                #os.remove(local_file)
                             else:
                                 print("Warning: File {0} containing image {1} seems corrupted.".format(local_file,
                                                                                                        image))
-                        else:
+                        elif 'PSII' in image[0] or 'psII' in image[0]:
                             raw = np.fromstring(img_str, dtype=np.uint16, count=db['psII_height'] * db['psII_width'])
                             if np.max(raw) > 16384:
                                 print("Warning: max value for image {0} is greater than 16384.".format(image))
                             raw_rescale = np.multiply(raw, 4)
                             raw_img = raw_rescale.reshape((db['psII_height'], db['psII_width']))
                             cv2.imwrite(os.path.join(snapshot_dir, image + ".png"), raw_img)
-                            os.remove(local_file)
+                            #os.remove(local_file)
+                        else:
+                            if len(img_str) == image[1] * image[2]:
+                                raw = np.fromstring(img_str, dtype=np.uint8, count = image[1] * image[2])
+                                raw_img = raw.reshape(( image[1], image[2]))
+                                if 'N-TV' in image[0] or 'N0' in image[0] or 'N-' in image[0]:
+                                    img = raw_img
+
+                                else:
+                                    img = cv2.cvtColor(raw_img, cv2.COLOR_BAYER_RG2BGR)
+                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
+                                try:
+                                    img = rotateImage( img, rotflipdict[ image[3]][0])
+                                    cv2.imwrite(os.path.join(snapshot_dir, image[0] + ".png"), img)
+                                except KeyError:
+                                    Print( "Don't know Rotate/FlipType: {0}".format( image[3])) 
+                            else:
+                                print("Warning: File {0} containing image {1} seems corrupted.".format(local_file,
+                                                                                                       image[0]))
+                            #os.remove(local_file)
                         zff.close()
                         zf.close()
-                        # os.remove(local_file)
+                        os.remove(local_file)
         else:
             values.append('')
             total_water_jobs += 1
