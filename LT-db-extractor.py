@@ -187,10 +187,25 @@ def main():
                 remote_dir = os.path.join("/data/pgftp", db['database'],
                                           snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image]))
                 local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image]))
-                try:
-                    sftp.get(remote_dir, local_file)
-                except IOError as e:
-                    print("I/O error({0}): {1}. Offending file: {2}".format(e.errno, e.strerror, remote_dir))
+                if not(args.location):
+                    # if the large object/raw image is stored external to the database it can be copied by ftp
+                    try:
+                        sftp.get(remote_dir, local_file)
+                    except IOError as e:
+                        print("I/O error({0}): {1}. Offending file: {2}".format(e.errno, e.strerror, remote_dir))
+                else:
+                    try:
+                        # if the large object/raw image is stored inside the database use the lobject function to open a connection,
+                        # read the zip file then write it out to the local directory 
+                        lo = psycopg2.extensions.lobject(conn, raw_images[image[0]], 'rb')
+                        data = io.BytesIO( lo.read())
+                        with open( os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])),'wb') as out:
+                            out.write( data.read()) 
+                        out.close()
+                        lo.close()
+                    except Exception as e:
+                        # catch all exception until I understand what types of errors to expect and need to stop
+                        print( e)
 
                 if os.path.exists(local_file):
                     # Is the file a zip file?
