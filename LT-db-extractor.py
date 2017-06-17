@@ -96,6 +96,7 @@ def options():
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--config", help="JSON config file.", required=True)
     parser.add_argument("-o", "--outdir", help="Output directory for results.", required=True)
+    parser.add_argument("-l", "--location", help="Location of raw image, as separate file (True) or in database (False).", type = str2bool, default=False)
     args = parser.parse_args()
 
     if os.path.exists(args.outdir):
@@ -114,10 +115,11 @@ def main():
     db = json.load(config)
 
     # SSH connection
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(db['hostname'], username='root', password=db['password'])
-    sftp = ssh.open_sftp()
+    if args.location == False:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(db['hostname'], username='root', password=db['password'])
+        sftp = ssh.open_sftp()
 
     # Make the output directory
     os.mkdir(args.outdir)
