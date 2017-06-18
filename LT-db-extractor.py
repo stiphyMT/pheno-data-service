@@ -97,7 +97,7 @@ def options():
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--config", help="JSON config file.", required=True)
     parser.add_argument("-o", "--outdir", help="Output directory for results.", required=True)
-    parser.add_argument("-l", "--location", help="Location of raw image, as separate file (True) or in database (False).", type = str2bool, default=False)
+    parser.add_argument("-l", "--location", help="Location of raw image, as separate file (False) or in database (True).", type = str2bool, default=False)
     args = parser.parse_args()
 
     if os.path.exists(args.outdir):
