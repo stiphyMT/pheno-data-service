@@ -10,6 +10,7 @@ import zipfile
 import paramiko
 import numpy as np
 import cv2
+import io
 
 def rotateImage(image, angle):
     """
@@ -185,8 +186,8 @@ def main():
             for image in images[snapshot_id]:
                 # Copy the raw image to the local directory
                 remote_dir = os.path.join("/data/pgftp", db['database'],
-                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image]))
-                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image]))
+                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
+                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]]))
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
                     try:
@@ -274,8 +275,9 @@ def main():
 
     cur.close()
     conn.close()
-    sftp.close()
-    ssh.close()
+    if not(args.location):
+        sftp.close()
+        ssh.close()
 
     print("Total snapshots = " + str(total_snapshots))
     print("Total water jobs = " + str(total_water_jobs))
