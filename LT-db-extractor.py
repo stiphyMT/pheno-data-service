@@ -12,13 +12,14 @@ import numpy as np
 import cv2
 import io
 
-def rotateImage(image, angle):
+def rotateImage(image, angleflip):
     """
     Rotates an OpenCV 2 / NumPy image about it's centre by the given angle
     (in degrees). The returned image will be large enough to hold the entire
     new image, with a black background
     """
-
+    angle = angleflip[0]
+    flip = angleflip[1]
     # Get the image size
     # No that's not an error - NumPy stores image matricies backwards
     image_size = (image.shape[1], image.shape[0])
@@ -78,6 +79,9 @@ def rotateImage(image, angle):
         flags=cv2.INTER_LINEAR
     )
 
+    if flip in ( 0, 1):
+        # flip can be 255:nothing, 0:horizontal, or 1:vertical 
+        result = cv2.flip( result, flip)
     return result
 
 def str2bool(v):
@@ -119,7 +123,7 @@ def main():
     if args.location == False:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(db['hostname'], username='root', password=db['password'])
+        ssh.connect(db['hostname'], username=db['username'], password=db['password'])
         sftp = ssh.open_sftp()
 
     # Make the output directory
@@ -141,7 +145,13 @@ def main():
     # Get all image metadata
     images = {}
     raw_images = {}
-    cur.execute("SELECT * FROM snapshot INNER JOIN tiled_image ON snapshot.id = tiled_image.snapshot_id INNER JOIN tile ON tiled_image.id = tile.tiled_image_id")
+    sql_command = """SELECT * FROM snapshot 
+                       INNER JOIN tiled_image 
+                             ON snapshot.id = tiled_image.snapshot_id 
+                       INNER JOIN tile 
+                             ON tiled_image.id = tile.tiled_image_id
+                       limit 105"""
+    cur.execute( sql_command)
     for row in cur:
         if row['snapshot_id'] in snapshots:
             image_name = row['camera_label'] + '_' + str(row['tiled_image_id']) + '_' + str(row['frame'])
@@ -187,7 +197,7 @@ def main():
                 # Copy the raw image to the local directory
                 remote_dir = os.path.join("/data/pgftp", db['database'],
                                           snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
-                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]]))
+                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])) 
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
                     try:
@@ -254,9 +264,10 @@ def main():
 
                                 else:
                                     img = cv2.cvtColor(raw_img, cv2.COLOR_BAYER_RG2BGR)
-                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
+#                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
+                                rotflipdict = { 0: ( 0, 255), 1: ( 270, 255), 2: ( 180, 255), 3: ( 90, 255), 4: ( 180, 1), 5:( 90, 0), 6: ( 0, 1), 7:( 270, 0)}
                                 try:
-                                    img = rotateImage( img, rotflipdict[ image[3]][0])
+                                    img = rotateImage( img, rotflipdict[ image[3]])
                                     cv2.imwrite(os.path.join(snapshot_dir, image[0] + ".png"), img)
                                 except KeyError:
                                     Print( "Don't know Rotate/FlipType: {0}".format( image[3])) 
