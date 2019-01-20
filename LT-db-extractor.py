@@ -12,13 +12,14 @@ import numpy as np
 import cv2
 import io
 
-def rotateImage(image, angle):
+def rotateImage(image, angleflip):
     """
     Rotates an OpenCV 2 / NumPy image about it's centre by the given angle
     (in degrees). The returned image will be large enough to hold the entire
     new image, with a black background
     """
-
+    angle = angleflip[0]
+    flip = angleflip[1]
     # Get the image size
     # No that's not an error - NumPy stores image matricies backwards
     image_size = (image.shape[1], image.shape[0])
@@ -78,6 +79,9 @@ def rotateImage(image, angle):
         flags=cv2.INTER_LINEAR
     )
 
+    if flip in ( 0, 1):
+        # flip can be 255:nothing, 0:horizontal, or 1:vertical 
+        result = cv2.flip( result, flip)
     return result
 
 def str2bool(v):
@@ -119,7 +123,7 @@ def main():
     if args.location == False:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(db['hostname'], username='root', password=db['password'])
+        ssh.connect(db['hostname'], username=db['username'], password=db['password'])
         sftp = ssh.open_sftp()
 
     # Make the output directory
@@ -141,15 +145,42 @@ def main():
     # Get all image metadata
     images = {}
     raw_images = {}
-    cur.execute("SELECT * FROM snapshot INNER JOIN tiled_image ON snapshot.id = tiled_image.snapshot_id INNER JOIN tile ON tiled_image.id = tile.tiled_image_id")
+    sql_command = """
+		SELECT ss.id AS "snapshotID"
+			, ss.id_tag AS "plantID"
+			, oc.configname AS "overallconfig"
+			, oc.id AS "overallconfigID"
+			, ti.camera_label AS "camera_label"
+			, ti.mm_pro_pixel_x AS "mm.px.x"
+			, ti.mm_pro_pixel_y AS "mm.px.y"
+			, tt.width AS "image.width"
+			, tt.height AS "image.height"
+			, tt.rotate_flip_type AS "rotfliptype"
+			, tt.dataformat AS "imageformat"
+			, ti.id AS "tiled_image_id"
+			, ti.frame AS "frame"
+			, tt.raw_image_oid AS "rawImageID"
+			, tt.raw_null_image_oid AS "rawNullImageID"
+			, ift.path AS "imagepath"
+		FROM snapshot AS ss
+		INNER JOIN overallconfig AS oc
+			ON ss.configuration_id = oc.id
+		INNER JOIN tiled_image AS ti
+			ON ss.id = ti.snapshot_id
+		INNER JOIN tile AS AS tt
+			ON ti.id = tt.tiled_image_id
+		INNER JOIN image_file_table AS ift
+			ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id)
+		LIMIT 27;"""
+    cur.execute( sql_command)
     for row in cur:
-        if row['snapshot_id'] in snapshots:
-            image_name = row['camera_label'] + '_' + str(row['tiled_image_id']) + '_' + str(row['frame'])
+        if row['snapshotID] in snapshots:
+            image_name = "{1}_{2}_{3}_{4}".format( row['camera_label'], row['tiled_image_id'], row['frame'], row["overallconfigID"])
             if row['snapshot_id'] in images:
-                images[row['snapshot_id']].append( ( image_name, row['height'], row['width'], row['rotate_flip_type']))
+                images[row['snapshot_id']].append( ( image_name, row['image.height'], row['image.width'], row['rotfliptype']))
             else:
-                images[row['snapshot_id']] = [ ( image_name, row['height'], row['width'], row['rotate_flip_type'])]
-            raw_images[image_name] = row['raw_image_oid']
+                images[row['snapshot_id']] = [ ( image_name, row['image.height'], row['image.width'], row['rotfliptype'])]
+            raw_images[image_name] = row['rawImageID']
 
     # Create SnapshotInfo.csv file
     header = ['experiment', 'id', 'plant barcode', 'car tag', 'timestamp', 'weight before', 'weight after',
@@ -173,7 +204,7 @@ def main():
         values = [db['experiment'], snapshot['id'], snapshot['id_tag'], snapshot['car_tag'],
                   snapshot['time_stamp'].strftime('%Y-%m-%d %H:%M:%S'), snapshot['weight_before'],
                   snapshot['weight_after'], snapshot['water_amount'], snapshot['completed'],
-                  snapshot['measurement_label'], '']
+                  snapshot['measurement_label'], snapshot['colour'], snapshot['creator'], '']
 
         # If the snapshot also contains images, add them to the output
         if snapshot_id in images:
@@ -187,7 +218,7 @@ def main():
                 # Copy the raw image to the local directory
                 remote_dir = os.path.join("/data/pgftp", db['database'],
                                           snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
-                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]]))
+                local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])) 
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
                     try:
@@ -255,8 +286,9 @@ def main():
                                 else:
                                     img = cv2.cvtColor(raw_img, cv2.COLOR_BAYER_RG2BGR)
                                 rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
+#                                rotflipdict = { 0: ( 0, 255), 1: ( 270, 255), 2: ( 180, 255), 3: ( 90, 255), 4: ( 180, 1), 5:( 90, 0), 6: ( 0, 1), 7:( 270, 0)}
                                 try:
-                                    img = rotateImage( img, rotflipdict[ image[3]][0])
+                                    img = rotateImage( img, rotflipdict[ image[3]])
                                     cv2.imwrite(os.path.join(snapshot_dir, image[0] + ".png"), img)
                                 except KeyError:
                                     Print( "Don't know Rotate/FlipType: {0}".format( image[3])) 
