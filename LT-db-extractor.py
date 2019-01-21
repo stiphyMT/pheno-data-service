@@ -123,7 +123,7 @@ def main():
     if args.location == False:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(db['hostname'], username='root', password=db['password'])
+        ssh.connect(db['hostname'], username='pgftp', password='LemnaTec')
         sftp = ssh.open_sftp()
 
     # Make the output directory
@@ -218,8 +218,7 @@ def main():
                 # Copy the raw image to the local directory
 #                remote_dir = os.path.join("/home/pgftp", db['database'],
 #                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
-                remote_dir = "/home/pgftp/{0}/{1}/blob{2}".format( db['database'],
-                    snapshot['time_stamp'].strftime("%Y-%m-%d"), raw_images[image[0]])
+                remote_dir = "{0}/{1}/blob{2}".format( db['database'], snapshot['time_stamp'].strftime("%Y-%m-%d"), raw_images[image[0]])
                 local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])) 
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
