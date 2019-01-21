@@ -123,7 +123,7 @@ def main():
     if args.location == False:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(db['hostname'], username=db['username'], password=db['password'])
+        ssh.connect(db['hostname'], username='root', password=db['password'])
         sftp = ssh.open_sftp()
 
     # Make the output directory
@@ -146,19 +146,19 @@ def main():
     images = {}
     raw_images = {}
     sql_command = """
-		SELECT ss.id AS "snapshotID"
+		SELECT ss.id AS "snapshot_id"
 			, ss.id_tag AS "plantID"
 			, oc.configname AS "overallconfig"
 			, oc.id AS "overallconfigID"
 			, ti.camera_label AS "camera_label"
-			, ti.mm_pro_pixel_x AS "mm.px.x"
-			, ti.mm_pro_pixel_y AS "mm.px.y"
-			, tt.width AS "image.width"
-			, tt.height AS "image.height"
+			, ti.mm_pro_pixel_x AS "mm_px_x"
+			, ti.mm_pro_pixel_y AS "mm_px_y"
+			, tt.width AS "image_width"
+			, tt.height AS "image_height"
 			, tt.rotate_flip_type AS "rotfliptype"
 			, tt.dataformat AS "imageformat"
 			, ti.id AS "tiled_image_id"
-			, ti.frame AS "frame"
+			, tt.frame AS "frame"
 			, tt.raw_image_oid AS "rawImageID"
 			, tt.raw_null_image_oid AS "rawNullImageID"
 			, ift.path AS "imagepath"
@@ -167,24 +167,24 @@ def main():
 			ON ss.configuration_id = oc.id
 		INNER JOIN tiled_image AS ti
 			ON ss.id = ti.snapshot_id
-		INNER JOIN tile AS AS tt
+		INNER JOIN tile AS tt
 			ON ti.id = tt.tiled_image_id
 		INNER JOIN image_file_table AS ift
 			ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id)
-		LIMIT 27;"""
+		;"""
     cur.execute( sql_command)
     for row in cur:
-        if row['snapshotID] in snapshots:
-            image_name = "{1}_{2}_{3}_{4}".format( row['camera_label'], row['tiled_image_id'], row['frame'], row["overallconfigID"])
+        if row['snapshot_id'] in snapshots:
+            image_name = "{0}_{1}_{2}_{3}".format( row['camera_label'], row['tiled_image_id'], row['frame'], row['overallconfigID'])
             if row['snapshot_id'] in images:
-                images[row['snapshot_id']].append( ( image_name, row['image.height'], row['image.width'], row['rotfliptype']))
+                images[row['snapshot_id']].append( ( image_name, row['image_height'], row['image_width'], row['rotfliptype']))
             else:
-                images[row['snapshot_id']] = [ ( image_name, row['image.height'], row['image.width'], row['rotfliptype'])]
+                images[row['snapshot_id']] = [ ( image_name, row['image_height'], row['image_width'], row['rotfliptype'])]
             raw_images[image_name] = row['rawImageID']
 
     # Create SnapshotInfo.csv file
     header = ['experiment', 'id', 'plant barcode', 'car tag', 'timestamp', 'weight before', 'weight after',
-              'water amount', 'completed', 'measurement label', 'tag', 'tiles']
+              'water amount', 'completed', 'measurement label', 'colour', 'creator', 'tag', 'tiles']
     csv.write(','.join(map(str, header)) + '\n')
 
     # Stats
@@ -216,8 +216,10 @@ def main():
 
             for image in images[snapshot_id]:
                 # Copy the raw image to the local directory
-                remote_dir = os.path.join("/data/pgftp", db['database'],
-                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
+#                remote_dir = os.path.join("/home/pgftp", db['database'],
+#                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
+                remote_dir = "/home/pgftp/{0}/{1}/blob{2}".format( db['database'],
+                    snapshot['time_stamp'].strftime("%Y-%m-%d"), raw_images[image[0]])
                 local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])) 
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
