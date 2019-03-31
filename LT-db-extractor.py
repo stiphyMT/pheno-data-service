@@ -12,27 +12,13 @@ import numpy as np
 import cv2
 import io
 
-def insert_st(original, new = '_', pos = 1):
-    '''
-    Inserts 'new' inside original at 'pos'.
-    '''
-    return original[:pos] + new + original[pos:]
-
-def rotateImage(image, angle_flip):
+def rotateImage(image, angle):
     """
     Rotates an OpenCV 2 / NumPy image about it's centre by the given angle
     (in degrees). The returned image will be large enough to hold the entire
     new image, with a black background
     """
-    angle, flip = angle_flip
-    
-    if flip == 1:
-        image = image[ :,::-1,:]
-        # or image = np.flip( image, 1)
-    elif flip ==2:
-        image = image[::-1,:,:]
-        # or image = np.flip( image, 0)
-        
+
     # Get the image size
     # No that's not an error - NumPy stores image matricies backwards
     image_size = (image.shape[1], image.shape[0])
@@ -109,14 +95,12 @@ def str2bool(v):
 def options():
     parser = argparse.ArgumentParser(description='Retrieve data from a LemnaTec database.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument( "-c", "--config", help="JSON config file.", required=True)
-    parser.add_argument( "-o", "--outdir", help="Output directory for results.", required=True)
-    parser.add_argument( "-l", "--location", help="Location of raw image, as separate file (False) or in database (True).", type = str2bool, default=False)
-    parser.add_argument( "-A", "--alsia", help = "Institute specific flag, (True) ALSIA camera label naming (False) normal.", type = str2bool, default = False)
-    parser.add_argument( "-s", "--short", help="A limited (short) run of 30 snapshots to test the download parameters.", type = str2bool, default=False)
+    parser.add_argument("-c", "--config", help="JSON config file.", required=True)
+    parser.add_argument("-o", "--outdir", help="Output directory for results.", required=True)
+    parser.add_argument("-l", "--location", help="Location of raw image, as separate file (False) or in database (True).", type = str2bool, default=False)
     args = parser.parse_args()
 
-    if os.path.exists( args.outdir):
+    if os.path.exists(args.outdir):
         raise IOError("The directory {0} already exists!".format(args.outdir))
 
     return args
@@ -135,11 +119,11 @@ def main():
     if args.location == False:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(db['hostname'], username='pgftp', password="LemnaTec")
+        ssh.connect(db['hostname'], username='root', password=db['password'])
         sftp = ssh.open_sftp()
 
     # Make the output directory
-    os.mkdir( args.outdir)
+    os.mkdir(args.outdir)
 
     # Create the SnapshotInfo.csv file
     csv = open(os.path.join(args.outdir, "SnapshotInfo.csv"), "w")
@@ -150,63 +134,22 @@ def main():
 
     # Get all snapshots
     snapshots = {}
-    sql_command = "SELECT * FROM snapshot WHERE measurement_label = %s"
-    if args.short:
-        sql_command = sql_command + " LIMIT 10;"
-    else:
-        sql_command = sql_command + ";"
-    cur.execute(  sql_command, [db['experiment']])
+    cur.execute("SELECT * FROM snapshot WHERE measurement_label = %s;", [db['experiment']])
     for row in cur:
         snapshots[row['id']] = row
 
     # Get all image metadata
-    sql_command = """
-        SELECT ss.id AS "snapshot_id"
-            , oc.configname AS "overallconfig"
-            , oc.id AS "overallconfigID"
-            , ti.camera_label AS "camera_label"
-            , ti.mm_pro_pixel_x AS "mm_px_x"
-            , ti.mm_pro_pixel_y AS "mm_px_y"
-            , tt.width AS "image_width"
-            , tt.height AS "image_height"
-            , tt.rotate_flip_type AS "rotfliptype"
-            , tt.dataformat AS "imageformat"
-            , ti.id AS "tiled_image_id"
-            , tt.frame AS "frame"
-            , tt.raw_image_oid AS "rawImageID"
-            , tt.raw_null_image_oid AS "rawNullImageID"
-            , ift.path AS "imagepath"
-        FROM snapshot AS ss
-        INNER JOIN overallconfig AS oc
-            ON ss.configuration_id = oc.id
-        INNER JOIN tiled_image AS ti
-            ON ss.id = ti.snapshot_id
-        INNER JOIN tile AS tt
-            ON ti.id = tt.tiled_image_id
-        INNER JOIN image_file_table AS ift
-            ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id)"""
-            
-    cur.execute( sql_command)
     images = {}
     raw_images = {}
+    cur.execute("SELECT * FROM snapshot INNER JOIN tiled_image ON snapshot.id = tiled_image.snapshot_id INNER JOIN tile ON tiled_image.id = tile.tiled_image_id")
     for row in cur:
-        if row["snapshot_id"] in snapshots:
-            if args.alsia:
-                if '0TV' in row["camera_label"]:
-                    camera_label = 'c' + row['camera_label'][0] + '_iTV_a000'
-#                    camera_label = insert_st( row['camera_label'], '_a', 1)
-                elif 'SV' in row["camera_label"]:
-                    camera_label = 'c' + insert_st( row['camera_label'], '_iSV_a', 1)
-                elif 'TV' in row["camera_label"]:
-                    camera_label = 'c' + insert_st( row['camera_label'], '_iTV_a', 1)
+        if row['snapshot_id'] in snapshots:
+            image_name = row['camera_label'] + '_' + str(row['tiled_image_id']) + '_' + str(row['frame'])
+            if row['snapshot_id'] in images:
+                images[row['snapshot_id']].append( ( image_name, row['height'], row['width'], row['rotate_flip_type']))
             else:
-                camera_label = 'c' + row['camera_label']
-            image_name = "{0}_t{1}_f{2}_z{3}".format( camera_label, row['tiled_image_id'], row['frame'], row["overallconfigID"])
-            if row["snapshot_id"] in images:
-                images[row["snapshot_id"]].append( ( image_name, row['image_height'], row['image_width'], row['rotfliptype']))
-            else:
-                images[row["snapshot_id"]] = [ ( image_name, row['image_height'], row['image_width'], row['rotfliptype'])]
-            raw_images[image_name] = row['rawImageID']
+                images[row['snapshot_id']] = [ ( image_name, row['height'], row['width'], row['rotate_flip_type'])]
+            raw_images[image_name] = row['raw_image_oid']
 
     # Create SnapshotInfo.csv file
     header = ['experiment', 'id', 'plant barcode', 'car tag', 'timestamp', 'weight before', 'weight after',
@@ -242,7 +185,8 @@ def main():
 
             for image in images[snapshot_id]:
                 # Copy the raw image to the local directory
-                remote_dir = "/data/pgftp" + "/" + db['database'] + "/" + snapshot['time_stamp'].strftime("%Y-%m-%d") + "/" +  "blob" + str(raw_images[image[0]])
+                remote_dir = os.path.join("/data/pgftp", db['database'],
+                                          snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
                 local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]]))
                 if not(args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
@@ -310,10 +254,9 @@ def main():
 
                                 else:
                                     img = cv2.cvtColor(raw_img, cv2.COLOR_BAYER_RG2BGR)
-                                rotflipdict = { 0: ( 180, 0), 1: ( 270, 0), 2: ( 0, 0), 3: ( 90, 0), 4: (180, 1), 5: ( 270, 1), 6: ( 0, 1), 7: ( 90, 1)}
-#                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
+                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
                                 try:
-                                    img = rotateImage( img, rotflipdict[ image[3]])
+                                    img = rotateImage( img, rotflipdict[ image[3]][0])
                                     cv2.imwrite(os.path.join(snapshot_dir, image[0] + ".png"), img)
                                 except KeyError:
                                     Print( "Don't know Rotate/FlipType: {0}".format( image[3])) 
