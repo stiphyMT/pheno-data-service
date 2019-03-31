@@ -24,8 +24,15 @@ def rotateImage( image, angleflip):
     (in degrees). The returned image will be large enough to hold the entire
     new image, with a black background
     """
-    angle = angleflip[0]
-    flip = angleflip[1]
+    angle, flip = angle_flip
+    
+    if flip == 1:
+        image = image[ :,::-1,:]
+        # or image = np.flip( image, 1)
+    elif flip ==2:
+        image = image[::-1,:,:]
+        # or image = np.flip( image, 0)
+        
     # Get the image size
     # No that's not an error - NumPy stores image matricies backwards
     image_size = ( image.shape[1], image.shape[0])
@@ -85,9 +92,6 @@ def rotateImage( image, angleflip):
         flags = cv2.INTER_LINEAR
     )
 
-    if flip in ( 0, 1):
-        # flip can be 255:nothing, 0:horizontal, or 1:vertical 
-        result = cv2.flip( result, flip)
     return result
 
 def str2bool( v):
@@ -109,6 +113,7 @@ def options():
     parser.add_argument( "-o", "--outdir", help = "Output directory for results.", required = True)
     parser.add_argument( "-l", "--location", help = "Location of raw image, as separate file (False) or in database (True).", type = str2bool, default = False)
     parser.add_argument( "-A", "--alsia", help = "Institute specific flag, (True) ALSIA camera label naming (False) normal.", type = str2bool, default = False)
+    parser.add_argument( "-s", "--short", help="A limited (short) run of 30 snapshots to test the download parameters.", type = str2bool, default=False)
     args = parser.parse_args()
 
     if os.path.exists( args.outdir):
@@ -151,8 +156,6 @@ def main():
         snapshots[row['id']] = row
 
     # Get all image metadata
-    images = {}
-    raw_images = {}
     sql_command = """
         SELECT ss.id AS "snapshot_id"
             , oc.configname AS "overallconfig"
@@ -180,14 +183,18 @@ def main():
             ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id)
         ;"""
     cur.execute( sql_command)
+    images = {}
+    raw_images = {}
     for row in cur:
         if row["snapshot_id"] in snapshots:
             if args.alsia:
                 if '0TV' in row["camera_label"]:
-                    camera_label = 'c' + row['camera_label'][0] + '_iTV_a0'
+                    camera_label = 'c' + row['camera_label'][0] + '_iTV_a000'
 #                    camera_label = insert_st( row['camera_label'], '_a', 1)
-                else:
+                elif 'SV' in row["camera_label"]:
                     camera_label = 'c' + insert_st( row['camera_label'], '_iSV_a', 1)
+                elif 'TV' in row["camera_label"]:
+                    camera_label = 'c' + insert_st( row['camera_label'], '_iTV_a', 1)
             else:
                 camera_label = 'c' + row['camera_label']
             image_name = "{0}_t{1}_f{2}_z{3}".format( camera_label, row['tiled_image_id'], row['frame'], row["overallconfigID"])
@@ -199,7 +206,7 @@ def main():
 
     # Create SnapshotInfo.csv file
     header = ['experiment', 'id', 'plant barcode', 'car tag', 'timestamp', 'weight before', 'weight after',
-              'water amount', 'completed', 'measurement label', 'colour', 'creator', 'tag', 'tiles']
+              'water amount', 'completed', 'measurement label', 'tag', 'tiles']
     csv.write(','.join(map(str, header)) + '\n')
 
     # Stats
@@ -219,7 +226,7 @@ def main():
         values = [db['experiment'], snapshot['id'], snapshot['id_tag'], snapshot['car_tag'],
                   snapshot['time_stamp'].strftime('%Y-%m-%d %H:%M:%S'), snapshot['weight_before'],
                   snapshot['weight_after'], snapshot['water_amount'], snapshot['completed'],
-                  snapshot['measurement_label'], snapshot['colour'], snapshot['creator'], '']
+                  snapshot['measurement_label'], '']
 
         # If the snapshot also contains images, add them to the output
         if snapshot_id in images:
@@ -301,8 +308,7 @@ def main():
                                 else:
                                     img = cv2.cvtColor( raw_img, cv2.COLOR_BAYER_RG2BGR)
 #                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
-                                rotflipdict = { 0: ( 0, 255), 1: ( 270, 255), 2: ( 180, 255), 3: ( 90, 255), 4: ( 180, 1), 5:( 90, 0), 6: ( 0, 1), 7:( 270, 0)}
-                                try:
+				rotflipdict = { 0: ( 180, 0), 1: ( 270, 0), 2: ( 0, 0), 3: ( 90, 0), 4: (180, 1), 5: ( 270, 1), 6: ( 0, 1), 7: ( 90, 1)}                                try:
                                     img = rotateImage( img, rotflipdict[ image[3]])
                                     cv2.imwrite( os.path.join( snapshot_dir, image[0] + ".png"), img)
                                 except KeyError:
