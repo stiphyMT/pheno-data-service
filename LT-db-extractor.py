@@ -308,14 +308,14 @@ def main():
                                 else:
                                     img = cv2.cvtColor( raw_img, cv2.COLOR_BAYER_RG2BGR)
 #                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
-				rotflipdict = { 0: ( 180, 0), 1: ( 270, 0), 2: ( 0, 0), 3: ( 90, 0), 4: (180, 1), 5: ( 270, 1), 6: ( 0, 1), 7: ( 90, 1)}                                try:
+                                rotflipdict = { 0: ( 180, 0), 1: ( 270, 0), 2: ( 0, 0), 3: ( 90, 0), 4: (180, 1), 5: ( 270, 1), 6: ( 0, 1), 7: ( 90, 1)}
+                                try:
                                     img = rotateImage( img, rotflipdict[ image[3]])
                                     cv2.imwrite( os.path.join( snapshot_dir, image[0] + ".png"), img)
                                 except KeyError:
-                                    Print( "Don't know Rotate/FlipType: {0}".format( image[3])) 
+                                    Print( "Don't know how to Rotate {0}° and Flip: {1}.".format( rotflipdict[ image[3]][0], rotflipdict[ image[3]][1])) 
                             else:
-                                print( "Warning: File {0} containing image {1} seems corrupted.".format(local_file,
-                                                                                                       image[0]))
+                                print( "Warning: File {0} containing image {1} seems corrupted.".format(local_file, image[0]))
                             #os.remove(local_file)
                         zff.close()
                         zf.close()
