@@ -24,7 +24,7 @@ def rotateImage( image, angleflip):
     (in degrees). The returned image will be large enough to hold the entire
     new image, with a black background
     """
-    angle, flip = angle_flip
+    angle, flip = angleflip
     
     if flip == 1:
         image = image[ :,::-1,:]
@@ -113,7 +113,7 @@ def options():
     parser.add_argument( "-o", "--outdir", help = "Output directory for results.", required = True)
     parser.add_argument( "-l", "--location", help = "Location of raw image, as separate file (False) or in database (True).", type = str2bool, default = False)
     parser.add_argument( "-A", "--alsia", help = "Institute specific flag, (True) ALSIA camera label naming (False) normal.", type = str2bool, default = False)
-    parser.add_argument( "-s", "--short", help="A limited (short) run of 30 snapshots to test the download parameters.", type = str2bool, default=False)
+    parser.add_argument( "-s", "--short", help="A limited (short) run of 20 snapshots to test the download parameters.", type = str2bool, default=False)
     args = parser.parse_args()
 
     if os.path.exists( args.outdir):
@@ -150,7 +150,11 @@ def main():
 
     # Get all snapshots
     snapshots = {}
-    snapshot_sql = "SELECT * FROM snapshot WHERE NOT(lower(creator) ~ '^error') AND measurement_label = %s;"
+    snapshot_sql = "SELECT * FROM snapshot WHERE NOT(lower(creator) ~ '^error') AND measurement_label = %s"
+    if args.short:
+        snapshot_sql += " LIMIT 20;"
+    else:
+        snapshot_sql += ";"
     cur.execute( snapshot_sql, [db['experiment']])
     for row in cur:
         snapshots[row['id']] = row
@@ -180,8 +184,8 @@ def main():
         INNER JOIN tile AS tt
             ON ti.id = tt.tiled_image_id
         INNER JOIN image_file_table AS ift
-            ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id)
-        ;"""
+            ON (tt.raw_image_oid = ift.id OR tt.image_oid = ift.id);
+        """
     cur.execute( sql_command)
     images = {}
     raw_images = {}
