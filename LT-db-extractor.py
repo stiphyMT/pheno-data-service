@@ -11,6 +11,8 @@ import paramiko
 import numpy as np
 import cv2
 import io
+import re as re
+import warnings
 
 def insert_st(original, new = '_', pos = 1):
 	'''
@@ -192,13 +194,19 @@ def main():
     for row in cur:
         if row["snapshot_id"] in snapshots:
             if args.alsia:
-                if '0TV' in row["camera_label"]:
-                    camera_label = 'c' + row['camera_label'][0] + '_iTV_a000'
-#                    camera_label = insert_st( row['camera_label'], '_a', 1)
-                elif 'SV' in row["camera_label"]:
-                    camera_label = 'c' + insert_st( row['camera_label'], '_iSV_a', 1)
-                elif 'TV' in row["camera_label"]:
-                    camera_label = 'c' + insert_st( row['camera_label'], '_iTV_a', 1)
+                if re.match( '[FNV]0?TV', row["camera_label"]) is not None:
+                    camera_label = 'c' + row['camera_label'][0] + '_iT_a000'
+                   # camera_label = insert_st( row['camera_label'], '_a', 1)
+                elif re.match( '[FNV]S?V?[0-9]{3}', row["camera_label"]) is not None:
+                    camera_label = 'c' + insert_st( row['camera_label'], '_iS_a', 1)
+                elif re.match( '[FNV]T?V?[0-9]{3}', row["camera_label"]) is not None:
+                    camera_label = 'c' + insert_st( row['camera_label'], '_iT_a', 1)
+                elif re.match('[FNV]_[ST]_[0-9]{3}', row["camera_label"]) is not None:
+                    camera_label = insert_st( row['camera_label'], 'a', 4)
+                    camera_label = 'c' + insert_st( camera_label, 'i', 2)
+                else:
+                    warnings.warn( 'Unexpected Camera label!')
+                    camera_label = '+c' + row['camera_label']
             else:
                 camera_label = 'c' + row['camera_label']
             image_name = "{0}_t{1}_f{2}_z{3}".format( camera_label, row['tiled_image_id'], row['frame'], row["overallconfigID"])
@@ -243,14 +251,27 @@ def main():
             for image in images[snapshot_id]:
                 # Copy the raw image to the local directory
 #                remote_dir = os.path.join("/data/pgftp", db['database'], snapshot['time_stamp'].strftime("%Y-%m-%d"), "blob" + str(raw_images[image[0]]))
-                remote_dir = "{0}/{1}/blob{2}".format( db['database'], snapshot['time_stamp'].strftime("%Y-%m-%d"), raw_images[image[0]])
                 local_file = os.path.join(snapshot_dir, "blob" + str(raw_images[image[0]])) 
                 if not( args.location):
                     # if the large object/raw image is stored external to the database it can be copied by ftp
                     try:
+                        remote_dir = "{0}/{1}/blob{2}".format( db['database'], snapshot['time_stamp'].strftime("%Y-%m-%d"), raw_images[image[0]])
                         sftp.get( remote_dir, local_file)
                     except IOError as e:
-                        print( "I/O error({0}): {1}. Offending file: {2}".format( e.errno, e.strerror, remote_dir))
+                        try:
+                            remote_dir = "{0}/{1}/blob{2}".format( db['database'], str( raw_images[image[0]])[0:4], raw_images[image[0]])
+                            sftp.get( remote_dir, local_file)
+                        except IOError as e:
+                            try: 
+                                remote_dir = "{0}/2018-02-21/blob_{1}.dat".format( db['database'], raw_images[image[0]])
+                                sftp.get( remote_dir, local_file)
+                            except IOError as e:
+                                try:
+                                    remote_dir = "{0}/2018-02-21/blob_{1}.dat".format( db['database'], raw_images[image[0]])
+                                    sftp.get( remote_dir, local_file)
+                                except IOError as e:
+                                    print( "I/O error({0}): {1}. Offending file: {2}".format( e.errno, e.strerror, remote_dir))
+                        
                 else:
                     try:
                         # if the large object/raw image is stored inside the database use the lobject function to open a connection,
@@ -306,12 +327,10 @@ def main():
                             if len( img_str) == image[1] * image[2]:
                                 raw = np.fromstring( img_str, dtype=np.uint8, count = image[1] * image[2])
                                 raw_img = raw.reshape(( image[1], image[2]))
-                                if 'N-TV' in image[0] or 'N0' in image[0] or 'N-' in image[0]:
-                                    img = raw_img
-
+                                if re.match( '^N', image[0]):
+                                    img = raw_img 
                                 else:
                                     img = cv2.cvtColor( raw_img, cv2.COLOR_BAYER_RG2BGR)
-#                                rotflipdict = { 0: ( 0, 0), 1: ( 270, 0), 2: ( 180, 0), 3: ( 90, 0)}
                                 rotflipdict = { 0: ( 180, 0), 1: ( 270, 0), 2: ( 0, 0), 3: ( 90, 0), 4: (180, 1), 5: ( 270, 1), 6: ( 0, 1), 7: ( 90, 1)}
                                 try:
                                     img = rotateImage( img, rotflipdict[ image[3]])
